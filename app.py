@@ -3,6 +3,7 @@ import requests
 import json
 import pandas as pd
 import time
+import plotly.express as px
 
 st.set_page_config(page_title="Pro Amazon SEO Analizci", page_icon="🚀", layout="wide")
 
@@ -28,15 +29,17 @@ PAZAR_VE_DILLER = {
 
 # Güçlü hata yakalama ile API'ye istek atan fonksiyon
 def kelime_paketi_cek(api_key, anahtar_kelime, pazar, secilen_dil, adet):
+    # JSON formatına "turkce" alanı eklendi
     prompt = f"""
     Sen uzman bir Amazon SEO uzmanısın. {pazar} pazaryerinde, tamamen {secilen_dil} dilinde "{anahtar_kelime}" için {adet} adet long-tail anahtar kelime üret.
     
     KURALLAR:
     1. Sadece {secilen_dil} dilinde kelimeler üret.
-    2. JSON formatı: [{{"kelime": "örnek", "hacim": 4, "zorluk": 2, "yorum": "Kolay hedef"}}]
+    2. JSON formatı: [{{"kelime": "örnek", "turkce": "türkçe karşılığı", "hacim": 4, "zorluk": 2, "yorum": "Kolay hedef"}}]
     3. Hacim (1-5), Zorluk (1-5).
     4. "yorum" KESİNLİKLE TÜRKÇE olacak, max 3 kelime (Örn: "Niş fırsat").
-    5. SADECE JSON listesi döndür.
+    5. "turkce" kısmına bu anahtar kelimenin TAM ve DOĞRU Türkçe çevirisini yaz.
+    6. SADECE JSON listesi döndür.
     """
     
     headers = {
@@ -51,7 +54,6 @@ def kelime_paketi_cek(api_key, anahtar_kelime, pazar, secilen_dil, adet):
     max_deneme = 2
     for deneme in range(max_deneme):
         try:
-            # Timeout'u 120 saniyeye çıkardık
             response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=120)
             response.raise_for_status()
             raw_cevap = response.json()['choices'][0]['message']['content']
@@ -83,7 +85,6 @@ def detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_adet):
     tum_sonuclar = []
     hata_sayisi = 0
     
-    # PAZAR BOYUTUNU 10'A İNDİRDİK (En güvenli sınır)
     paket_boyutu = 10 
     paket_sayisi = max(1, (toplam_adet + paket_boyutu - 1) // paket_boyutu)
     
@@ -109,7 +110,6 @@ def detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_adet):
     progress_text.empty()
     progress_bar.empty()
     
-    # TEKRAR EDENLERİ TEMİZLE
     gorulen_kelimeler = set()
     benzersiz_sonuclar = []
     for item in tum_sonuclar:
@@ -149,20 +149,21 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             else:
                 st.success(f"✅ Analiz Sorunsuz Tamamlandı! {len(sonuclar)} benzersiz kelime bulundu.")
             
-            # --- RAPOR ÖZETİ ---
+            # --- GELİŞMİŞ RAPOR ÖZETİ ---
             st.subheader("📋 Hızlı Pazar Özeti")
             col1, col2, col3, col4 = st.columns(4)
             
             toplam_hacim = sum(k.get("hacim", 0) for k in sonuclar)
             kolay_kelime_sayisi = sum(1 for k in sonuclar if k.get("zorluk", 5) <= 2)
             zor_kelime_sayisi = sum(1 for k in sonuclar if k.get("zorluk", 0) >= 4)
+            ortalama_hacim = sum(k.get("hacim", 0) for k in sonuclar) / len(sonuclar)
+            ortalama_zorluk = sum(k.get("zorluk", 0) for k in sonuclar) / len(sonuclar)
             
             col1.metric("Toplam Kelime", len(sonuclar))
-            col2.metric("Toplam Hacim Skoru", toplam_hacim)
+            col2.metric("Ort. Hacim Puanı", f"{ortalama_hacim:.1f}")
             col3.metric("🟢 Kolay Hedefler", kolay_kelime_sayisi)
             col4.metric("🔴 Zor Hedefler", zor_kelime_sayisi)
             
-            # --- İKON VE RENK AÇIKLAMALARI (EXPANDER KULLANILMADAN DOĞRUDAN YAZILDI) ---
             st.markdown("""
             ---
             ### 📖 İkon ve Renklerin Anlamları
@@ -179,8 +180,38 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             ---
             """)
             
-            # --- TABLO ---
+            # --- YENİ: GÖRSEL GRAFİK RAPORLARI ---
+            st.subheader("📊 Görsel Dağılım Raporları")
             df = pd.DataFrame(sonuclar)
+            
+            col_g1, col_g2 = st.columns(2)
+            
+            with col_g1:
+                st.markdown("##### Zorluk Dağılımı")
+                zorluk_verisi = df['zorluk'].value_counts().reset_index()
+                zorluk_verisi.columns = ['Zorluk', 'Adet']
+                # Renkleri manuel eşleştirdik
+                fig_z = px.pie(zorluk_verisi, values='Adet', names='Zorluk', 
+                               color='Zorluk',
+                               color_discrete_map={'1':'#2ecc71', '2':'#27ae60', '3':'#f1c40f', '4':'#e67e22', '5':'#e74c3c'})
+                fig_z.update_traces(textinfo='label+percent', textfont_size=14)
+                st.plotly_chart(fig_z, use_container_width=True)
+                
+            with col_g2:
+                st.markdown("##### Hacim Dağılımı")
+                hacim_verisi = df['hacim'].value_counts().reset_index()
+                hacim_verisi.columns = ['Hacim', 'Adet']
+                # Hacimde yüksek olan yeşil, düşük olan kırmızı olmalı
+                fig_h = px.pie(hacim_verisi, values='Adet', names='Hacim',
+                               color='Hacim',
+                               color_discrete_map={'1':'#e74c3c', '2':'#e67e22', '3':'#f1c40f', '4':'#27ae60', '5':'#2ecc71'})
+                fig_h.update_traces(textinfo='label+percent', textfont_size=14)
+                st.plotly_chart(fig_h, use_container_width=True)
+            
+            st.divider()
+
+            # --- DETAYLI TABLO (TÜRKÇE ÇEVİRİ EKLENDİ) ---
+            df['turkce'] = df['turkce'].fillna("-").astype(str)
             
             def zorluk_emoji(z):
                 if z <= 2: return "🟢 " + str(z)
@@ -195,8 +226,10 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             df['Zorluk'] = df['zorluk'].apply(zorluk_emoji)
             df['Hacim'] = df['hacim'].apply(hacim_emoji)
             
-            df_gosterim = df[['kelime', 'Hacim', 'Zorluk', 'yorum']].rename(columns={
-                'kelime': 'Anahtar Kelime',
+            # Sütun sıralaması güncellendi
+            df_gosterim = df[['kelime', 'turkce', 'Hacim', 'Zorluk', 'yorum']].rename(columns={
+                'kelime': 'Anahtar Kelime (Orijinal)',
+                'turkce': 'Türkçe Çeviri',
                 'yorum': 'Stratejik Yorum (TR)'
             })
             
@@ -210,7 +243,7 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             altin_firsatlar = [k for k in sonuclar if k.get("hacim", 0) >= 4 and k.get("zorluk", 5) <= 2]
             if altin_firsatlar:
                 for idx, af in enumerate(altin_firsatlar[:10], 1):
-                    st.markdown(f"**{idx}. {af['kelime']}** | Hacim: {af['hacim']}/5 | Zorluk: {af['zorluk']}/5 | *{af['yorum']}*")
+                    st.markdown(f"**{idx}. {af['kelime']}** ({af.get('turkce', '-')}) | Hacim: {af['hacim']}/5 | Zorluk: {af['zorluk']}/5 | *{af['yorum']}*")
             else:
                 st.info("Bu aramada 'Hacmi Yüksek + Zorluğu Düşük' mükemmel eşleşme bulunamadı.")
             
