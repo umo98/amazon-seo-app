@@ -3,7 +3,6 @@ import requests
 import json
 import pandas as pd
 import time
-import plotly.express as px
 
 st.set_page_config(page_title="Pro Amazon SEO Analizci", page_icon="🚀", layout="wide")
 
@@ -180,37 +179,10 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             ---
             """)
             
-            # --- YENİ: GÖRSEL GRAFİK RAPORLARI ---
-            st.subheader("📊 Görsel Dağılım Raporları")
-            df = pd.DataFrame(sonuclar)
-            
-            col_g1, col_g2 = st.columns(2)
-            
-            with col_g1:
-                st.markdown("##### Zorluk Dağılımı")
-                zorluk_verisi = df['zorluk'].value_counts().reset_index()
-                zorluk_verisi.columns = ['Zorluk', 'Adet']
-                # Renkleri manuel eşleştirdik
-                fig_z = px.pie(zorluk_verisi, values='Adet', names='Zorluk', 
-                               color='Zorluk',
-                               color_discrete_map={'1':'#2ecc71', '2':'#27ae60', '3':'#f1c40f', '4':'#e67e22', '5':'#e74c3c'})
-                fig_z.update_traces(textinfo='label+percent', textfont_size=14)
-                st.plotly_chart(fig_z, use_container_width=True)
-                
-            with col_g2:
-                st.markdown("##### Hacim Dağılımı")
-                hacim_verisi = df['hacim'].value_counts().reset_index()
-                hacim_verisi.columns = ['Hacim', 'Adet']
-                # Hacimde yüksek olan yeşil, düşük olan kırmızı olmalı
-                fig_h = px.pie(hacim_verisi, values='Adet', names='Hacim',
-                               color='Hacim',
-                               color_discrete_map={'1':'#e74c3c', '2':'#e67e22', '3':'#f1c40f', '4':'#27ae60', '5':'#2ecc71'})
-                fig_h.update_traces(textinfo='label+percent', textfont_size=14)
-                st.plotly_chart(fig_h, use_container_width=True)
-            
             st.divider()
 
             # --- DETAYLI TABLO (TÜRKÇE ÇEVİRİ EKLENDİ) ---
+            df = pd.DataFrame(sonuclar)
             df['turkce'] = df['turkce'].fillna("-").astype(str)
             
             def zorluk_emoji(z):
