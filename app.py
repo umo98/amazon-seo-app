@@ -6,6 +6,7 @@ import time
 
 st.set_page_config(page_title="Pro Amazon SEO Analizci", page_icon="🚀", layout="wide")
 
+# MiniMax modeli uzun metinlerde çok daha kararlıdır
 MODEL_ID = "minimax/minimax-m2.5:free"
 
 PAZAR_VE_DILLER = {
@@ -25,20 +26,17 @@ PAZAR_VE_DILLER = {
     "amazon.com.au": ["Avustralya İngilizcesi"]
 }
 
+# Güçlü hata yakalama ile API'ye istek atan fonksiyon
 def kelime_paketi_cek(api_key, anahtar_kelime, pazar, secilen_dil, adet):
     prompt = f"""
     Sen uzman bir Amazon SEO uzmanısın. {pazar} pazaryerinde, tamamen {secilen_dil} dilinde "{anahtar_kelime}" için {adet} adet long-tail anahtar kelime üret.
     
     KURALLAR:
-    1. Sadece ve sadece {secilen_dil} dilinde kelimeler üret. ASLA başka bir dilde kelime üretme.
-    2. Her kelime için şu JSON formatında veri üret:
-    [
-      {{"kelime": "örnek", "hacim": 4, "zorluk": 2, "yorum": "Kolay hedef"}},
-      {{"kelime": "örnek 2", "hacim": 5, "zorluk": 5, "yorum": "Fiyat savaşı var"}}
-    ]
-    3. Hacim (1-5 arası, 5 en yüksek). Zorluk (1-5 arası, 1 en kolay/rakipsiz).
-    4. "yorum" kısmını KESİNLİKLE VE SADECE TÜRKÇE yaz. Max 3-4 kelime olsun (Örn: "Niş fırsat", "Rekabet yüksek", "Kolay sıralama").
-    5. SADECE JSON listesi döndür, başka hiçbir metin yazma.
+    1. Sadece {secilen_dil} dilinde kelimeler üret.
+    2. JSON formatı: [{{"kelime": "örnek", "hacim": 4, "zorluk": 2, "yorum": "Kolay hedef"}}]
+    3. Hacim (1-5), Zorluk (1-5).
+    4. "yorum" KESİNLİKLE TÜRKÇE olacak, max 3 kelime (Örn: "Niş fırsat").
+    5. SADECE JSON listesi döndür.
     """
     
     headers = {
@@ -50,32 +48,43 @@ def kelime_paketi_cek(api_key, anahtar_kelime, pazar, secilen_dil, adet):
         "messages": [{"role": "user", "content": prompt}]
     }
     
-    try:
-        # 1000 kelime isteneceği için timeout süresini uzattık
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=90)
-        response.raise_for_status()
-        raw_cevap = response.json()['choices'][0]['message']['content']
-        
-        if "```json" in raw_cevap:
-            raw_cevap = raw_cevap.split("```json")[1].split("```")[0].strip()
-        elif "```" in raw_cevap:
-            raw_cevap = raw_cevap.split("```")[1].split("```")[0].strip()
+    max_deneme = 2
+    for deneme in range(max_deneme):
+        try:
+            # Timeout'u 120 saniyeye çıkardık
+            response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=120)
+            response.raise_for_status()
+            raw_cevap = response.json()['choices'][0]['message']['content']
             
-        start_idx = raw_cevap.find('[')
-        end_idx = raw_cevap.rfind(']')
-        if start_idx != -1 and end_idx != -1:
-            raw_cevap = raw_cevap[start_idx:end_idx+1]
+            if "```json" in raw_cevap:
+                raw_cevap = raw_cevap.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw_cevap:
+                raw_cevap = raw_cevap.split("```")[1].split("```")[0].strip()
+                
+            start_idx = raw_cevap.find('[')
+            end_idx = raw_cevap.rfind(']')
+            if start_idx != -1 and end_idx != -1:
+                raw_cevap = raw_cevap[start_idx:end_idx+1]
+                
+            return json.loads(raw_cevap)
             
-        return json.loads(raw_cevap)
-    except Exception as e:
-        return None
+        except requests.exceptions.Timeout:
+            time.sleep(3) # Zaman aşımı olursa 3 sn bekle ve tekrar dene
+            continue
+        except Exception as e:
+            time.sleep(2) # Başka bir hata olursa 2 sn bekle ve tekrar dene
+            continue
+            
+    return None # 2 deneme de başarısız olursa None döndür (Ama ana sistem çökmeyecek!)
 
 def detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_adet):
     api_key = st.secrets["OPENROUTER_API_KEY"]
     
     tum_sonuclar = []
-    # API'yi yormamak için 50'şerli paketler halinde çekiyoruz
-    paket_boyutu = 50 
+    hata_sayisi = 0
+    
+    # PAZAR BOYUTUNU 10'A İNDİRDİK (En güvenli sınır)
+    paket_boyutu = 10 
     paket_sayisi = max(1, (toplam_adet + paket_boyutu - 1) // paket_boyutu)
     
     progress_text = st.empty()
@@ -83,26 +92,26 @@ def detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_adet):
     
     for i in range(paket_sayisi):
         mevcut_istek_adedi = min(paket_boyutu, toplam_adet - (i * paket_boyutu))
-        
-        # YÜZDESEL İLERLEME HESAPLAMASI
         ilerleme_yuzdesi = int(((i + 1) / paket_sayisi) * 100)
-        progress_text.text(f"🚀 Yapay Zeka Çalışıyor... %{ilerleme_yuzdesi} Tamamlandı (Paket {i+1}/{paket_sayisi})")
+        
+        progress_text.text(f"🚀 Yapay Zeka Çalışıyor... %{ilerleme_yuzdesi} (Paket {i+1}/{paket_sayisi}) - Başarılı: {len(tum_sonuclar)} kelime")
         
         paket_sonuclari = kelime_paketi_cek(api_key, anahtar_kelime, pazar_secimi, secilen_dil, mevcut_istek_adedi)
         
-        # Eğer API hata verirse o paketi atla, işlemi kesintiye uğratma
         if paket_sonuclari:
             tum_sonuclar.extend(paket_sonuclari)
         else:
-            time.sleep(2) # Hata durumunda API'yi dinlenmeye bırak
+            hata_sayisi += 1
             
         progress_bar.progress(ilerleme_yuzdesi / 100)
-        time.sleep(1) # Ücretsiz API'yi banlamamak için bekleme
+        
+        # Ücretsiz API ban yeme riskine karşı bekleme süresini 2 saniyeye çıkardık
+        time.sleep(2) 
         
     progress_text.empty()
     progress_bar.empty()
     
-    # Tekrar eden kelimeleri temizle
+    # TEKRAR EDENLERİ TEMİZLE
     gorulen_kelimeler = set()
     benzersiz_sonuclar = []
     for item in tum_sonuclar:
@@ -111,34 +120,19 @@ def detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_adet):
             gorulen_kelimeler.add(k)
             benzersiz_sonuclar.append(item)
             
-    return benzersiz_sonuclar[:toplam_adet]
+    return benzersiz_sonuclar[:toplam_adet], hata_sayisi
 
 # --- ARAYÜZ ---
 st.title("🚀 Pro Amazon SEO & Rakip Analiz Aracı")
 
 with st.sidebar:
     st.header("⚙️ Analiz Ayarları")
-    
-    pazar_secimi = st.selectbox(
-        "1. Hedef Pazar Yeri", 
-        options=list(PAZAR_VE_DILLER.keys()),
-        format_func=lambda x: x.upper()
-    )
-    
+    pazar_secimi = st.selectbox("1. Hedef Pazar Yeri", options=list(PAZAR_VE_DILLER.keys()), format_func=lambda x: x.upper())
     mevcut_diller = PAZAR_VE_DILLER[pazar_secimi]
-    secilen_dil = st.selectbox(
-        "2. Arama Dili", 
-        options=mevcut_diller,
-        disabled=(len(mevcut_diller) == 1)
-    )
+    secilen_dil = st.selectbox("2. Arama Dili", options=mevcut_diller, disabled=(len(mevcut_diller) == 1))
     
-    # 1000 KELEMEYE KADAR SEÇENEK
     kelime_secenekleri = [10, 20, 50, 100, 200, 500, 1000]
-    secilen_index = st.selectbox(
-        "3. Kaç Kelime Üretilsin?",
-        options=range(len(kelime_secenekleri)),
-        format_func=lambda i: f"{kelime_secenekleri[i]} Kelime"
-    )
+    secilen_index = st.selectbox("3. Kaç Kelime Üretilsin?", options=range(len(kelime_secenekleri)), format_func=lambda i: f"{kelime_secenekleri[i]} Kelime")
     toplam_kelime_adedi = kelime_secenekleri[secilen_index]
 
 anahtar_kelime = st.text_input("🔍 Anahtar Kelimenizi Girin", placeholder="Örn: wireless mouse", key="kelime_input")
@@ -147,12 +141,18 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
     if not anahtar_kelime:
         st.warning("Lütfen bir anahtar kelime girin!")
     else:
-        sonuclar = detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_kelime_adedi)
+        # Artık fonksiyondan hem sonuçları hem de hata sayısını alıyoruz
+        sonuclar, hata_sayisi = detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_kelime_adedi)
         
+        # EĞER EN AZ 1 KELİME GELDİYSE RAPORU GÖSTER, BOŞŞA HATA VER
         if not sonuclar:
-            st.error("Hiçbir sonuç alınamadı. (Ücretsiz API limiti dolmuş veya istek çok uzun sürmüş olabilir)")
+            st.error("❌ Hiçbir sonuç alınamadı. OpenRouter API key'inizin aktif olduğundan emin olun.")
         else:
-            st.success(f"✅ Analiz Tamamlandı! {len(sonuclar)} benzersiz kelime bulundu.")
+            # Eğer arada kaybolan paketler varsa kullanıcıyı uyar
+            if hata_sayisi > 0:
+                st.warning(f"⚠️ Not: Ücretsiz API limitleri nedeniyle {hata_sayisi} paket atlandı. Ancak {len(sonuclar)} kelime başarıyla getirildi!")
+            else:
+                st.success(f"✅ Analiz Sorunsuz Tamamlandı! {len(sonuclar)} benzersiz kelime bulundu.")
             
             # --- RAPOR ÖZETİ ---
             st.subheader("📋 Hızlı Pazar Özeti")
@@ -167,7 +167,6 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             col3.metric("🟢 Kolay Hedefler", kolay_kelime_sayisi)
             col4.metric("🔴 Zor Hedefler", zor_kelime_sayisi)
             
-            # --- YENİ: İKON VE RENK ANLAMLARI ---
             with st.expander("📖 İkon ve Renklerin Anlamları", expanded=False):
                 st.markdown("""
                 **⭐ Hacim (Aranma Sıklığı):**
@@ -177,7 +176,7 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
                 **Zorluk (Rakip Sayısı & Sıralama Gücü):**
                 - 🟢 1-2 Puan : **Kolay Fırsat.** Büyük satıcılar yok, kolayca 1. sayfaya çıkılabilir.
                 - 🟡 3 Puan  : **Orta Seviye.** Rekabet var ama iyi optimizasyonla başarılabilir.
-                - 🔴 4-5 Puan : **Zor.** Dev markalar ve binlerce yorumlu ürünler hakim, kaçınılması tavsiye edilir.
+                - 🔴 4-5 Puan : **Zor.** Dev markalar hakim, kaçınılması tavsiye edilir.
                 """)
             
             st.divider()
@@ -214,16 +213,12 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             
             st.divider()
             
-            # --- YENİ: TOPLU KOPYALAMA BUTONU ---
+            # --- TOPLU KOPYALAMA ---
             st.subheader("📋 Toplu Kopyalama")
-            st.markdown("Aşağıdaki butona basarak tüm kelimeleri tek seferde kopyalayıp Excel'e veya başka bir yere yapıştırabilirsiniz.")
-            
-            # Kopyalanacak metni formatlayalım (Sekmelerle ayrılmış düz metin)
             kopyalama_metni = "Anahtar Kelime\tHacim\tZorluk\tYorum\n"
             for item in sonuclar:
                 kopyalama_metni += f"{item.get('kelime', '')}\t{item.get('hacim', '')}\t{item.get('zorluk', '')}\t{item.get('yorum', '')}\n"
             
-            # Streamlit'in download butonunu kopyalama butonu olarak kullanıyoruz
             st.download_button(
                 label="🚀 TÜM KELİMELERİ KOPYALA / İNDİR (.TXT)",
                 data=kopyalama_metni,
