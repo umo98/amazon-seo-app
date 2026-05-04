@@ -8,31 +8,31 @@ st.set_page_config(page_title="Gelişmiş Amazon SEO Analizci", page_icon="🚀"
 
 MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 
-# İSTENİLEN 14 PAZAR YERİ VE OTOMATİK DİL TANIMALARI
-PAZARLAR = {
-    "amazon.com": "Amerikan İngilizcesi",
-    "amazon.co.uk": "İngilizce (UK)",
-    "amazon.de": "Almanca",
-    "amazon.fr": "Fransızca",
-    "amazon.es": "İspanyolca",
-    "amazon.it": "İtalyanca",
-    "amazon.nl": "Hollandaca",
-    "amazon.pl": "Lehçe",
-    "amazon.se": "İsveççe",
-    "amazon.be": "Felemenkçe / Fransızca (Belçika)",
-    "amazon.ie": "İngilizce (IE)",
-    "amazon.jp": "Japonca",
-    "amazon.ca": "İngilizce / Fransızca (Kanada)",
-    "amazon.com.au": "Avustralya İngilizcesi"
+# PAZAR YERLERİ VE ONLARIN DESTEKLEDİĞİ DİLLER (LISTE ŞEKLİNDE)
+PAZAR_VE_DILLER = {
+    "amazon.com": ["Amerikan İngilizcesi"],
+    "amazon.co.uk": ["İngilizce (UK)"],
+    "amazon.de": ["Almanca"],
+    "amazon.fr": ["Fransızca"],
+    "amazon.es": ["İspanyolca"],
+    "amazon.it": ["İtalyanca"],
+    "amazon.nl": ["Hollandaca"],
+    "amazon.pl": ["Lehçe"],
+    "amazon.se": ["İsveççe"],
+    "amazon.be": ["Felemenkçe (Flaman)", "Fransızca (Valon)"],
+    "amazon.ie": ["İngilizce (IE)"],
+    "amazon.jp": ["Japonca"],
+    "amazon.ca": ["İngilizce", "Fransızca"],
+    "amazon.com.au": ["Avustralya İngilizcesi"]
 }
 
 # HER BİR PAKET İÇİN API'YE GİDEN FONKSİYON
-def kelime_paketi_cek(api_key, anahtar_kelime, pazar, dil, adet):
+def kelime_paketi_cek(api_key, anahtar_kelime, pazar, secilen_dil, adet):
     prompt = f"""
-    Sen uzman bir Amazon SEO uzmanısın. {pazar} pazaryerinde, tamamen {dil} dilinde "{anahtar_kelime}" için {adet} adet long-tail (uzun kuyruk) anahtar kelime üret.
+    Sen uzman bir Amazon SEO uzmanısın. {pazar} pazaryerinde, tamamen {secilen_dil} dilinde "{anahtar_kelime}" için {adet} adet long-tail (uzun kuyruk) anahtar kelime üret.
     
     KURALLAR:
-    1. Sadece ve sadece {dil} dilinde kelimeler üret. ASLA İngilizce veya başka dilde karışık kelime üretme.
+    1. Sadece ve sadece {secilen_dil} dilinde kelimeler üret. ASLA başka bir dilde kelime üretme.
     2. Her kelime için şu JSON formatında veri üret:
     [
       {{"kelime": "örnek", "hacim": 4, "zorluk": 2, "yorum": "Ofis çalışanları için ideal"}},
@@ -73,12 +73,10 @@ def kelime_paketi_cek(api_key, anahtar_kelime, pazar, dil, adet):
         return None
 
 # ANA ANALİZ FONKSİYONU (PAKETLERİ BİRLEŞTİRİR)
-def detayli_analiz_yap(anahtar_kelime, pazar_secimi, toplam_adet):
+def detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_adet):
     api_key = st.secrets["OPENROUTER_API_KEY"]
-    dil = PAZARLAR[pazar_secimi]
     
     tum_sonuclar = []
-    # Yapay zekayı yormamak için maksimum 25'lik paketler halinde istek atıyoruz
     paket_boyutu = 25 
     paket_sayisi = max(1, (toplam_adet + paket_boyutu - 1) // paket_boyutu)
     
@@ -89,13 +87,13 @@ def detayli_analiz_yap(anahtar_kelime, pazar_secimi, toplam_adet):
         mevcut_istek_adedi = min(paket_boyutu, toplam_adet - (i * paket_boyutu))
         progress_text.text(f"🚀 Yapay Zeka Çalışıyor... Paket {i+1}/{paket_sayisi} ({(i+1)*paket_boyutu}/{toplam_adet} kelime)")
         
-        paket_sonuclari = kelime_paketi_cek(api_key, anahtar_kelime, pazar_secimi, dil, mevcut_istek_adedi)
+        paket_sonuclari = kelime_paketi_cek(api_key, anahtar_kelime, pazar_secimi, secilen_dil, mevcut_istek_adedi)
         
         if paket_sonuclari:
             tum_sonuclar.extend(paket_sonuclari)
         
         progress_bar.progress((i + 1) / paket_sayisi)
-        time.sleep(0.5) # API'yi yormamak için küçük bekleme
+        time.sleep(0.5) 
         
     progress_text.empty()
     progress_bar.empty()
@@ -114,21 +112,32 @@ def detayli_analiz_yap(anahtar_kelime, pazar_secimi, toplam_adet):
 
 # --- GELİŞMİŞ ARAYÜZ ---
 st.title("🚀 Gelişmiş Amazon SEO & Rakip Analiz Aracı")
-st.markdown("14 Farklı Amazon Pazarında, Yapay Zeka Destekli Detaylı Raporlama")
+st.markdown("14 Farklı Amazon Pazarında, Diline Özel Detaylı Raporlama")
 
 with st.sidebar:
     st.header("⚙️ Analiz Ayarları")
     
+    # 1. PAZAR YERİ SEÇİMİ
     pazar_secimi = st.selectbox(
-        "Hedef Pazar Yeri", 
-        options=list(PAZARLAR.keys()),
-        format_func=lambda x: f"{x.upper()} ({PAZARLAR[x]})"
+        "1. Hedef Pazar Yeri", 
+        options=list(PAZAR_VE_DILLER.keys()),
+        format_func=lambda x: x.upper()
     )
     
-    # KELİME SAYISI SEÇİMİ
+    # 2. DİNAMİK DİL SEÇİMİ (Seçilen pazara göre dilleri listeler)
+    mevcut_diller = PAZAR_VE_DILLER[pazar_secimi]
+    
+    # Eğer pazarın tek dili varsa default olarak onu seç, birden fazlaysa dropdown aç
+    secilen_dil = st.selectbox(
+        "2. Arama Dili", 
+        options=mevcut_diller,
+        disabled=(len(mevcut_diller) == 1) # Tek dil varsa gri yapılır ama görünür
+    )
+    
+    # 3. KELİME SAYISI SEÇİMİ
     kelime_secenekleri = [10, 20, 50, 100, 150, 200]
     secilen_index = st.selectbox(
-        "Kaç Anahtar Kelime Üretilsin?",
+        "3. Kaç Anahtar Kelime Üretilsin?",
         options=range(len(kelime_secenekleri)),
         format_func=lambda i: f"{kelime_secenekleri[i]} Kelime"
     )
@@ -140,8 +149,7 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
     if not anahtar_kelime:
         st.warning("Lütfen bir anahtar kelime girin!")
     else:
-        hedef_dil = PAZARLAR[pazar_secimi]
-        sonuclar = detayli_analiz_yap(anahtar_kelime, pazar_secimi, toplam_kelime_adedi)
+        sonuclar = detayli_analiz_yap(anahtar_kelime, pazar_secimi, secilen_dil, toplam_kelime_adedi)
         
         if not sonuclar:
             st.error("Hiçbir sonuç alınamadı. API kotanız dolmuş veya model hata vermiş olabilir.")
@@ -158,7 +166,7 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             
             col1.metric("Toplam Kelime", len(sonuclar))
             col2.metric("Toplam Hacim Skoru", toplam_hacim, help="Tüm kelimelerin hacim puanlarının toplamı")
-            col3.metric("🟢 Kolay Hedefler (1-2)", kolay_kelime_sayisi, help="Rakip sayısı düşük, üst sıralara çıkmak相对容易")
+            col3.metric("🟢 Kolay Hedefler (1-2)", kolay_kelime_sayisi, help="Rakip sayısı düşük kelimeler")
             col4.metric("🔴 Zor Hedefler (4-5)", zor_kelime_sayisi, help="Büyük markaların hakim olduğu kelimeler")
             
             st.divider()
@@ -166,7 +174,6 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             # --- PANDAS TABLOSU OLUŞTURMA ---
             df = pd.DataFrame(sonuclar)
             
-            # Zorluk renkleri için emoji ekliyoruz
             def zorluk_emoji(z):
                 if z <= 2: return "🟢 " + str(z)
                 elif z <= 3: return "🟡 " + str(z)
@@ -175,24 +182,22 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             df['Zorluk'] = df['zorluk'].apply(zorluk_emoji)
             df['Hacim'] = "⭐ " + df['hacim'].astype(str)
             
-            # Sütunları Türkçe ve güzelce sıralıyoruz
             df_gosterim = df[['kelime', 'Hacim', 'Zorluk', 'yorum']].rename(columns={
                 'kelime': 'Anahtar Kelime',
                 'yorum': 'Stratejik Yorum'
             })
             
-            # TABLOYU GÖSTER
-            st.subheader("📈 Detaylı Kelime Tablosu")
+            st.subheader(f"📈 {pazar_secimi.upper()} - {secilen_dil} Detaylı Kelime Tablosu")
             st.dataframe(
                 df_gosterim, 
                 use_container_width=True, 
                 hide_index=True,
-                height=min(600, len(sonuclar) * 35) # Tablo yüksekliği kelime sayısına göre ayarlanır
+                height=min(600, len(sonuclar) * 35) 
             )
             
             st.divider()
             
-            # --- ALTIN FIRSATLAR (EN İYİLER) ---
+            # --- ALTIN FIRSATLAR ---
             st.subheader("🏆 Altın Fırsatlar (En İyi 5 Kelime)")
             st.markdown("*Hacmi yüksek (4-5) ve Zorluğu düşük (1-2) olan kelimeler*")
             
