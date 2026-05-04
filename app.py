@@ -7,7 +7,6 @@ import plotly.express as px
 
 st.set_page_config(page_title="Pro Amazon SEO Analizci", page_icon="🚀", layout="wide")
 
-# MiniMax modeli uzun metinlerde çok daha kararlıdır
 MODEL_ID = "openrouter/owl-alpha"
 
 PAZAR_VE_DILLER = {
@@ -27,9 +26,7 @@ PAZAR_VE_DILLER = {
     "amazon.com.au": ["Avustralya İngilizcesi"]
 }
 
-# Güçlü hata yakalama ile API'ye istek atan fonksiyon
 def kelime_paketi_cek(api_key, anahtar_kelime, pazar, secilen_dil, adet):
-    # JSON formatına "turkce" alanı eklendi
     prompt = f"""
     Sen uzman bir Amazon SEO uzmanısın. {pazar} pazaryerinde, tamamen {secilen_dil} dilinde "{anahtar_kelime}" için {adet} adet long-tail anahtar kelime üret.
     
@@ -153,11 +150,10 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             st.subheader("📋 Hızlı Pazar Özeti")
             col1, col2, col3, col4 = st.columns(4)
             
-            toplam_hacim = sum(k.get("hacim", 0) for k in sonuclar)
             kolay_kelime_sayisi = sum(1 for k in sonuclar if k.get("zorluk", 5) <= 2)
+            orta_kelime_sayisi = sum(1 for k in sonuclar if k.get("zorluk", 0) == 3)
             zor_kelime_sayisi = sum(1 for k in sonuclar if k.get("zorluk", 0) >= 4)
             ortalama_hacim = sum(k.get("hacim", 0) for k in sonuclar) / len(sonuclar)
-            ortalama_zorluk = sum(k.get("zorluk", 0) for k in sonuclar) / len(sonuclar)
             
             col1.metric("Toplam Kelime", len(sonuclar))
             col2.metric("Ort. Hacim Puanı", f"{ortalama_hacim:.1f}")
@@ -166,21 +162,13 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             
             st.markdown("""
             ---
-            ### 📖 İkon ve Renklerin Anlamları
-            
-            **🟢🟡🔴 Hacim Sütunu (Aranma Sıklığı):**
-            - 🟢 4-5 Puan : **Yüksek Hacim (Olumlu).** Çok aranan, talebi yüksek kelimeler.
-            - 🟡 3 Puan  : Orta seviye arama hacmi.
-            - 🔴 1-2 Puan : **Düşük Hacim (Olumsuz).** Nadir aranan, niş kelimeler.
-            
-            **🟢🟡🔴 Zorluk Sütunu (Rakip Sayısı):**
-            - 🟢 1-2 Puan : **Kolay Fırsat (Olumlu).** Büyük satıcılar yok, kolayca 1. sayfaya çıkılabilir.
-            - 🟡 3 Puan  : **Orta Seviye.** Rekabet var ama iyi optimizasyonla başarılabilir.
-            - 🔴 4-5 Puan : **Zor (Olumsuz).** Dev markalar hakim, zor sıralama.
+            ### 📖 Tablo Gruplama Mantığı
+            Aşağıdaki kelimeler; rakip sayısına göre **Kolay**, **Orta** ve **Zor** olmak üzere 3 ayrı tabloya bölünmüştür. 
+            **Hacim sütunundaki renkler:** 🟢 Yüksek talep (Olumlu) | 🟡 Orta talep | 🔴 Düşük talep (Niş).
             ---
             """)
             
-            # --- YENİ: GÖRSEL GRAFİK RAPORLARI ---
+            # --- GÖRSEL GRAFİK RAPORLARI ---
             st.subheader("📊 Görsel Dağılım Raporları")
             df = pd.DataFrame(sonuclar)
             
@@ -190,7 +178,6 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
                 st.markdown("##### Zorluk Dağılımı")
                 zorluk_verisi = df['zorluk'].value_counts().reset_index()
                 zorluk_verisi.columns = ['Zorluk', 'Adet']
-                # Renkleri manuel eşleştirdik
                 fig_z = px.pie(zorluk_verisi, values='Adet', names='Zorluk', 
                                color='Zorluk',
                                color_discrete_map={'1':'#2ecc71', '2':'#27ae60', '3':'#f1c40f', '4':'#e67e22', '5':'#e74c3c'})
@@ -201,7 +188,6 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
                 st.markdown("##### Hacim Dağılımı")
                 hacim_verisi = df['hacim'].value_counts().reset_index()
                 hacim_verisi.columns = ['Hacim', 'Adet']
-                # Hacimde yüksek olan yeşil, düşük olan kırmızı olmalı
                 fig_h = px.pie(hacim_verisi, values='Adet', names='Hacim',
                                color='Hacim',
                                color_discrete_map={'1':'#e74c3c', '2':'#e67e22', '3':'#f1c40f', '4':'#27ae60', '5':'#2ecc71'})
@@ -210,42 +196,66 @@ if st.button("📊 DETAYLI RAPORU OLUŞTUR", type="primary", use_container_width
             
             st.divider()
 
-            # --- DETAYLI TABLO (TÜRKÇE ÇEVİRİ EKLENDİ) ---
+            # --- VERİLERİ KATEGORİLERE AYIRMA ---
             df['turkce'] = df['turkce'].fillna("-").astype(str)
             
-            def zorluk_emoji(z):
-                if z <= 2: return "🟢 " + str(z)
-                elif z <= 3: return "🟡 " + str(z)
-                else: return "🔴 " + str(z)
-                
+            df_kolay = df[df['zorluk'].isin([1, 2])].copy()
+            df_orta = df[df['zorluk'] == 3].copy()
+            df_zor = df[df['zorluk'].isin([4, 5])].copy()
+
+            # Hacim emojisi fonksiyonu (Sadece hacim kaldı)
             def hacim_emoji(h):
                 if h >= 4: return "🟢 " + str(h)
                 elif h == 3: return "🟡 " + str(h)
                 else: return "🔴 " + str(h)
 
-            df['Zorluk'] = df['zorluk'].apply(zorluk_emoji)
-            df['Hacim'] = df['hacim'].apply(hacim_emoji)
+            # Tabloyu formatlama fonksiyonu
+            def tablo_yap(temp_df):
+                temp_df['Hacim'] = temp_df['hacim'].apply(hacim_emoji)
+                return temp_df[['kelime', 'turkce', 'Hacim', 'yorum']].rename(columns={
+                    'kelime': 'Anahtar Kelime (Orijinal)',
+                    'turkce': 'Türkçe Çeviri',
+                    'yorum': 'Stratejik Yorum (TR)'
+                })
             
-            # Sütun sıralaması güncellendi
-            df_gosterim = df[['kelime', 'turkce', 'Hacim', 'Zorluk', 'yorum']].rename(columns={
-                'kelime': 'Anahtar Kelime (Orijinal)',
-                'turkce': 'Türkçe Çeviri',
-                'yorum': 'Stratejik Yorum (TR)'
-            })
+            # --- 1. KOLAY HEDETLER TABLOSU ---
+            st.subheader("🟢 1. Kolay Hedefler (Öncelikli Çalışılması Gerekenler)")
+            st.caption("Rakip sayısı düşük, büyük markaların hakim olmadığı kelimeler. Listing'inizi optimize ederek kısa sürede 1. sayfaya çıkabilirsiniz.")
+            if not df_kolay.empty:
+                st.dataframe(tablo_yap(df_kolay), use_container_width=True, hide_index=True, height=min(500, len(df_kolay) * 32))
+            else:
+                st.info("Bu aramada kolay seviyede kelime bulunamadı.")
             
-            st.subheader(f"📈 {pazar_secimi.upper()} Detaylı Tablo")
-            st.dataframe(df_gosterim, use_container_width=True, hide_index=True, height=min(700, len(sonuclar) * 30))
+            st.divider()
+
+            # --- 2. ORTA SEVİYE HEDETLER TABLOSU ---
+            st.subheader("🟡 2. Orta Seviye Hedefler")
+            st.caption("Biraz rekabet olan ancak iyi görsel, fiyat ve yorum stratejisi ile kazanılabilecek kelimeler.")
+            if not df_orta.empty:
+                st.dataframe(tablo_yap(df_orta), use_container_width=True, hide_index=True, height=min(500, len(df_orta) * 32))
+            else:
+                st.info("Bu aramada orta seviyede kelime bulunamadı.")
+            
+            st.divider()
+
+            # --- 3. ZOR HEDETLER TABLOSU ---
+            st.subheader("🔴 3. Zor Hedefler (Riskli Alanlar)")
+            st.caption("Dev markaların yerleştiği, binlerce yorumlu ürünlerin bulunduğu kelimeler. Girmek zaman ve yüksek maliyet gerektirir, yeni başlayanlar için önerilmez.")
+            if not df_zor.empty:
+                st.dataframe(tablo_yap(df_zor), use_container_width=True, hide_index=True, height=min(500, len(df_zor) * 32))
+            else:
+                st.info("Bu aramada zor seviyede kelime bulunamadı.")
             
             st.divider()
             
             # --- ALTIN FIRSATLAR ---
-            st.subheader("🏆 Altın Fırsatlar (En İyi 10 Kelime)")
+            st.subheader("🏆 Altın Fırsatlar (Hacmi Yüksek Olan Kolay Kelimeler)")
             altin_firsatlar = [k for k in sonuclar if k.get("hacim", 0) >= 4 and k.get("zorluk", 5) <= 2]
             if altin_firsatlar:
                 for idx, af in enumerate(altin_firsatlar[:10], 1):
-                    st.markdown(f"**{idx}. {af['kelime']}** ({af.get('turkce', '-')}) | Hacim: {af['hacim']}/5 | Zorluk: {af['zorluk']}/5 | *{af['yorum']}*")
+                    st.markdown(f"**{idx}. {af['kelime']}** ({af.get('turkce', '-')}) | Hacim: {af['hacim']}/5 | *{af['yorum']}*")
             else:
-                st.info("Bu aramada 'Hacmi Yüksek + Zorluğu Düşük' mükemmel eşleşme bulunamadı.")
+                st.info("Maalesef 'Hacmi Yüksek' VE 'Zorluğu Düşük' olan mükemmel eşleşme bulunamadı.")
             
             st.divider()
             
