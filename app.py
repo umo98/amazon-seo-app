@@ -6,7 +6,7 @@ import time
 
 st.set_page_config(page_title="Gelişmiş Amazon SEO Analizci", page_icon="🚀", layout="wide")
 
-MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+MODEL_ID = "minimax/minimax-m2.5:free"
 
 # PAZAR YERLERİ VE ONLARIN DESTEKLEDİĞİ DİLLER (LISTE ŞEKLİNDE)
 PAZAR_VE_DILLER = {
