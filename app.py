@@ -6,7 +6,7 @@ import time
 
 st.set_page_config(page_title="Gelişmiş Amazon SEO Analizci", page_icon="🚀", layout="wide")
 
-MODEL_ID = "minimax/minimax-m2.5:free"
+MODEL_ID = "openrouter/owl-alpha"
 
 # PAZAR YERLERİ VE ONLARIN DESTEKLEDİĞİ DİLLER (LISTE ŞEKLİNDE)
 PAZAR_VE_DILLER = {
